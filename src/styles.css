@@ -321,6 +321,16 @@ body {
 
 /* ── Footer / submit ─────────────────────────────────────────────────── */
 .forms-foot { padding: 0 28px 26px; }
+/* During the review step, pin Edit / Confirm to the bottom of the viewport so
+   they stay reachable while the user scrolls through their answers. */
+.forms-foot.is-sticky {
+  position: sticky;
+  bottom: 0;
+  padding-top: 16px;
+  background: #fff;
+  border-top: 1px solid #e2e8f0;
+  box-shadow: 0 -6px 18px rgba(15, 23, 42, .08);
+}
 .forms-submit {
   width: 100%;
   background: linear-gradient(135deg, var(--crispr) 0%, var(--crispr-dark) 100%);
@@ -347,16 +357,17 @@ body {
   margin-bottom: 18px;
 }
 .forms-submitted-banner {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1e40af;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #fde047;
+  border-bottom: 1px solid #eab308;
+  color: #713f12;
   padding: 13px 16px;
-  border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
   line-height: 1.5;
   text-align: center;
-  margin-bottom: 18px;
 }
 
 .forms-review-actions { display: flex; gap: 12px; }

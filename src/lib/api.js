@@ -94,8 +94,22 @@ export async function fetchFormResponses(formId, key) {
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ id: formId, key }),
   });
-  if (!res.ok) throw await parseError(res);
-  return res.json();
+  let body = null;
+  try { body = await res.json(); } catch { /* non-JSON body */ }
+
+  // "No submission found" is the expected first-time state, not a failure —
+  // return empty so the caller leaves the form open for the user to fill in.
+  const message = String(body?.message || body?.error?.message || '').toLowerCase();
+  if (message.includes('no submission')) return { data: null };
+
+  if (!res.ok) {
+    const env = body?.error || {};
+    const err = new Error(env.message || body?.message || `HTTP ${res.status}`);
+    err.code = env.code || (res.status === 404 ? 'NOT_FOUND' : 'HTTP_ERROR');
+    err.status = res.status;
+    throw err;
+  }
+  return body;
 }
 
 // Submit the completed form. `data` is keyed by the template field keys.

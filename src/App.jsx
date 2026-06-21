@@ -8,11 +8,32 @@ import SubmissionForm from './SubmissionForm.jsx';
 //   /preview?id=<FORM_ID>                          → read-only, disabled, empty
 //   /read?id=<FORM_ID>&secret=<SECRET>             → read-only, filled with the
 //                                                     recorded submission + print
+// Read a query param straight from the raw search string and percent-decode it.
+function rawParam(search, name) {
+  const entry = search.replace(/^\?/, '').split('&').find((p) => p.startsWith(`${name}=`));
+  if (!entry) return '';
+  const value = entry.slice(name.length + 1);
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
+// The recipient key / secret are base64 tokens whose "+" characters travel
+// through the URL as "%20" (and thus decode to a space). Restore those spaces
+// back to "+" so the token sent in the API payload matches the original
+// (e.g. "U2FsdGVkX1%20mDjz…%3D" → "U2FsdGVkX1+mDjz…=").
+function tokenParam(search, name) {
+  return rawParam(search, name).replace(/ /g, '+');
+}
+
 function parseParams() {
-  const p = new URLSearchParams(window.location.search);
+  const search = window.location.search;
   const path = window.location.pathname.replace(/\/+$/, '');
   const route = path.endsWith('/preview') ? 'preview' : path.endsWith('/read') ? 'read' : 'submission';
-  return { id: p.get('id') || '', key: p.get('key') || '', secret: p.get('secret') || '', route };
+  return {
+    id: rawParam(search, 'id'),
+    key: tokenParam(search, 'key'),
+    secret: tokenParam(search, 'secret'),
+    route,
+  };
 }
 
 // Pull the recorded answers out of the fetch.php response, tolerating a few
@@ -152,7 +173,7 @@ export default function App() {
         mode="read"
         initialData={submission?.data}
         submittedAt={submission?.submittedAt}
-        banner="This form was already submitted at 9am, 12 June, 2026"
+        alreadySubmitted
       />
     );
   }
