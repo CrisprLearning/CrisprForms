@@ -312,6 +312,12 @@ body {
   font-size: 14px;
   font-style: italic;
 }
+.forms-sig-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 160px;
+}
 
 /* ── Footer / submit ─────────────────────────────────────────────────── */
 .forms-foot { padding: 0 28px 26px; }
@@ -340,6 +346,19 @@ body {
   line-height: 1.5;
   margin-bottom: 18px;
 }
+.forms-submitted-banner {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  padding: 13px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  margin-bottom: 18px;
+}
+
 .forms-review-actions { display: flex; gap: 12px; }
 .forms-review-actions .forms-submit { flex: 1; }
 .forms-edit {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getTemplate } from './formTemplates.js';
-import { fetchRecipient, fetchSubmission } from './lib/api.js';
+import { fetchSubmission, fetchFormResponses } from './lib/api.js';
 import SubmissionForm from './SubmissionForm.jsx';
 
 // Read the route + params from the URL.
@@ -13,6 +13,19 @@ function parseParams() {
   const path = window.location.pathname.replace(/\/+$/, '');
   const route = path.endsWith('/preview') ? 'preview' : path.endsWith('/read') ? 'read' : 'submission';
   return { id: p.get('id') || '', key: p.get('key') || '', secret: p.get('secret') || '', route };
+}
+
+// Pull the recorded answers out of the fetch.php response, tolerating a few
+// likely envelope shapes ({ data: {...} }, { data: { data: {...} } }, or the
+// fields at the top level). Returns null when no real answers are present so
+// the form stays open for a first-time submission.
+function extractResponses(body) {
+  if (!body || typeof body !== 'object') return null;
+  let d = body.data && typeof body.data === 'object' ? body.data : body;
+  if (d.data && typeof d.data === 'object') d = d.data;
+  const META = new Set(['submittedAt', 'recipientName', 'status', 'success', 'message', 'id', 'key']);
+  const hasAnswers = Object.keys(d).some((k) => !META.has(k) && d[k] != null && d[k] !== '');
+  return hasAnswers ? d : null;
 }
 
 function Centered({ icon, title, message, tone = 'neutral' }) {
@@ -52,11 +65,21 @@ export default function App() {
     }
 
     if (!key) return;
-    fetchRecipient(id, key)
-      .then((info) => {
+    fetchFormResponses(id, key)
+      .then((body) => {
         if (!alive) return;
-        setRecipient(info);
-        setStatus(info?.submitted ? 'submitted' : 'ready');
+        const data = extractResponses(body);
+        if (data) {
+          // Already submitted — lock the form and show the recorded answers.
+          // The backend returns the timestamp as `submitted_at` (seconds).
+          const env = body?.data ?? body;
+          const ts = env?.submitted_at ?? env?.submittedAt ?? null;
+          setSubmission({ data, submittedAt: ts != null ? Number(ts) * 1000 : null });
+          setStatus('prefilled');
+        } else {
+          // No prior submission — leave the form open for the recipient.
+          setStatus('ready');
+        }
       })
       .catch((err) => {
         if (!alive) return;
@@ -120,6 +143,18 @@ export default function App() {
 
   if (status === 'submitted') {
     return <Centered tone="success" icon="✓" title="Already Submitted" message="This form has already been completed. Thank you!" />;
+  }
+
+  if (status === 'prefilled') {
+    return (
+      <SubmissionForm
+        template={template}
+        mode="read"
+        initialData={submission?.data}
+        submittedAt={submission?.submittedAt}
+        banner="This form was already submitted at 9am, 12 June, 2026"
+      />
+    );
   }
 
   if (isRead) {

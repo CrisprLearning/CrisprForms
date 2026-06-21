@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-// Lightweight canvas signature pad. Reports whether a signature has been
-// drawn via onChange(hasInk); the parent records the signed-on timestamp.
+// Lightweight canvas signature pad. On each completed stroke it reports the
+// drawn signature as a base64-encoded PNG data URL via onChange(dataUrl), and
+// onChange(null) when cleared; the parent stores that data URL as the value.
 export default function SignaturePad({ onChange, disabled = false, defaultSigned = false }) {
   const canvasRef = useRef(null);
   const drawing = useRef(false);
@@ -50,11 +51,15 @@ export default function SignaturePad({ onChange, disabled = false, defaultSigned
     if (!hasInk.current) {
       hasInk.current = true;
       setEmpty(false);
-      onChange(true);
     }
   }
 
-  function end() { drawing.current = false; }
+  function end() {
+    if (!drawing.current) return;
+    drawing.current = false;
+    // Emit the finished signature as a base64 PNG once the stroke completes.
+    if (hasInk.current) onChange(canvasRef.current.toDataURL('image/png'));
+  }
 
   function clear() {
     const canvas = canvasRef.current;
@@ -62,7 +67,7 @@ export default function SignaturePad({ onChange, disabled = false, defaultSigned
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     hasInk.current = false;
     setEmpty(true);
-    onChange(false);
+    onChange(null);
   }
 
   return (

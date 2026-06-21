@@ -10,6 +10,9 @@ import { API_BASE, USE_MOCK } from '../config.js';
 
 const BASE = `${API_BASE}/api/forms`;
 
+// Public PHP endpoints that back the live submission flow.
+const PUBLIC_FORMS_BASE = 'https://crisprtech.app/crispr-apis/public/forms';
+
 async function parseError(res) {
   let body = null;
   try { body = await res.json(); } catch { /* ignore */ }
@@ -79,12 +82,28 @@ export async function fetchSubmission(formId, secret) {
   return body.data || body;
 }
 
+// Fetch any previously recorded responses for this recipient's form.
+// Returns the raw response body; the caller decides whether it holds answers.
+// A recipient who has not submitted yet yields an empty/absent `data`.
+export async function fetchFormResponses(formId, key) {
+  if (USE_MOCK) {
+    return { data: null };
+  }
+  const res = await fetch(`${PUBLIC_FORMS_BASE}/fetch.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ id: formId, key }),
+  });
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
 // Submit the completed form. `data` is keyed by the template field keys.
 export async function submitForm(formId, key, data) {
   if (USE_MOCK) {
     return { ok: true, submittedAt: Date.now(), data };
   }
-  const res = await fetch(`${BASE}/submission?id=${encodeURIComponent(formId)}&key=${encodeURIComponent(key)}`, {
+  const res = await fetch(`${PUBLIC_FORMS_BASE}/submit.php`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ id: formId, key, data }),

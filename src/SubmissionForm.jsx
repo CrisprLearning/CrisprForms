@@ -61,6 +61,13 @@ function initialValues(fields, initialData) {
   return out;
 }
 
+// Normalise a stored signature into an <img> src. New captures are already a
+// "data:image/png;base64,…" URL; tolerate a bare base64 string from the backend.
+function signatureSrc(v) {
+  const s = String(v);
+  return s.startsWith('data:') ? s : `data:image/png;base64,${s}`;
+}
+
 function formatTimestamp(ts) {
   if (!ts) return '—';
   const d = new Date(Number(ts));
@@ -79,6 +86,7 @@ export default function SubmissionForm({
   mode = 'submit',
   initialData = null,
   submittedAt = null,
+  banner = null,
 }) {
   const { fields } = template;
 
@@ -278,7 +286,9 @@ export default function SubmissionForm({
           <div key={f.key} className="forms-field">
             {label}
             <div className="forms-read-signature">
-              {values[f.key] ? `Signed on ${formatTimestamp(values[f.key])}` : 'Not signed'}
+              {values[f.key]
+                ? <img src={signatureSrc(values[f.key])} alt="Signature" className="forms-sig-image" />
+                : 'Not signed'}
             </div>
           </div>
         );
@@ -286,7 +296,7 @@ export default function SubmissionForm({
       return (
         <div key={f.key} className="forms-field">
           {label}
-          <SignaturePad disabled={disabled} defaultSigned={Boolean(values[f.key])} onChange={(hasInk) => setValue(f.key, hasInk ? Date.now() : null)} />
+          <SignaturePad disabled={disabled} defaultSigned={Boolean(values[f.key])} onChange={(dataUrl) => setValue(f.key, dataUrl)} />
           {err && <span className="forms-error">{err}</span>}
         </div>
       );
@@ -418,6 +428,7 @@ export default function SubmissionForm({
         </div>
       )}
       <form className="forms-card" onSubmit={handleReview} noValidate>
+        {banner && <div className="forms-submitted-banner">{banner}</div>}
         <div className="forms-head">
           <h1>{template.title}</h1>
           {template.intro && (Array.isArray(template.intro) ? template.intro : [template.intro]).map((p, ii) => (
