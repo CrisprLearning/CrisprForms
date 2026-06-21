@@ -414,6 +414,7 @@ body {
 }
 .forms-state-card h1 { margin: 0 0 8px; font-size: 20px; }
 .forms-state-card p { margin: 0; font-size: 14px; color: #64748b; line-height: 1.55; }
+.forms-confirm-download { margin-top: 22px; }
 .forms-state-icon {
   width: 58px;
   height: 58px;

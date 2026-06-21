@@ -121,6 +121,8 @@ export default function SubmissionForm({
   // Final-preview step: after a valid submit, the form is shown read-only with
   // Edit / Confirm actions; only Confirm actually sends the submission.
   const [reviewing, setReviewing] = useState(false);
+  // Set once the submission is accepted — swaps to the confirmation view.
+  const [submitted, setSubmitted] = useState(false);
 
   const isRead = mode === 'read';
   // Read mode, preview mode, and the final-review step are all non-editable.
@@ -234,7 +236,9 @@ export default function SubmissionForm({
     setSubmitting(true);
     try {
       await submitForm(template.id, formKey, values);
-      onSubmitted();
+      setSubmitting(false);
+      setSubmitted(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setSubmitError(err?.message || 'Submission failed. Please try again.');
       setSubmitting(false);
@@ -254,8 +258,9 @@ export default function SubmissionForm({
 
     fields.forEach((f) => {
       if (f.type === 'section') {
-        // Start a new table for this section; keep the previous one if filled.
-        if (current.rows.length) blocks.push(current);
+        // Start a new block for this section; keep the previous one if it has
+        // any content (rows or a note — e.g. a note-only Declaration section).
+        if (current.rows.length || current.notes.length) blocks.push(current);
         // Carry the emphasis note (if any) to print just below the heading.
         const notes = f.noteEmphasis && f.note != null
           ? (Array.isArray(f.note) ? f.note : [f.note])
@@ -280,15 +285,15 @@ export default function SubmissionForm({
         addRow(f.label, s ? escapeHtml(s) : '—');
       }
     });
-    if (current.rows.length) blocks.push(current);
+    if (current.rows.length || current.notes.length) blocks.push(current);
 
     const tablesHtml = blocks.map((b) => `
   ${b.title ? `<h2>${escapeHtml(b.title)}</h2>` : ''}
   ${(b.notes || []).map((n) => `<p class="note">${escapeHtml(richToText(n))}</p>`).join('')}
-  <table>
+  ${b.rows.length ? `<table>
     <colgroup><col class="label" /><col class="value" /></colgroup>
     <tbody>${b.rows.join('')}</tbody>
-  </table>`).join('');
+  </table>` : ''}`).join('');
 
     const submittedLine = submittedAt
       ? `<p class="submitted">Digitally submitted at <strong>${escapeHtml(formatSubmittedAt(submittedAt))}</strong></p>`
@@ -506,6 +511,21 @@ export default function SubmissionForm({
   });
   }, [fields, values, errors, disabled, showSignatureStamp, focused]);
 
+  if (submitted) {
+    return (
+      <div className="forms-state">
+        <div className="forms-state-card forms-state-success">
+          <div className="forms-state-icon">✓</div>
+          <h1>Form Submitted</h1>
+          <p>Your response has been recorded successfully. Thank you!</p>
+          <button type="button" className="forms-submit forms-print forms-confirm-download" onClick={handlePrint}>
+            Download PDF for Reference
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="forms-page">
       {mode === 'submit' && !reviewing && (
@@ -570,7 +590,7 @@ export default function SubmissionForm({
         <div className={`forms-foot ${reviewing ? 'is-sticky' : ''}`}>
           {isRead ? (
             <button type="button" className="forms-submit forms-print" onClick={handlePrint}>
-              Print as PDF
+              Save PDF
             </button>
           ) : reviewing ? (
             <div className="forms-review-actions">

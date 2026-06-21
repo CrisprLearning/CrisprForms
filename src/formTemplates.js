@@ -317,7 +317,7 @@ export const FORM_TEMPLATES = {
       { type: 'section', label: '16. Compliance with Institutional Policies', note: 'Students are expected to follow all policies, guidelines, instructions, and notices issued by Crispr Learning from time to time for the smooth functioning of academic and campus activities.' },
 
       { type: 'section', label: 'Declaration', note: [
-        'I understand that these rules are intended to maintain a safe, respectful, and effective learning environment for all students.',
+        'I understand that the rules mentioned in Student Code of Conduct & Undertaking are intended to maintain a safe, respectful, and effective learning environment for all students.',
         'I agree to follow the above rules and understand that repeated or serious violations may result in appropriate disciplinary action by Crispr Learning.',
       ], noteEmphasis: true },
 
@@ -472,7 +472,7 @@ export const FORM_TEMPLATES = {
         note: 'Crispr Learning may update or revise its policies whenever needed. Updated policies will be shared through official channels and will apply from the date they are published.',
       },
 
-      { type: 'section', label: 'Declaration', note: 'I have read and understood the above Terms & Conditions of Crispr Learning. I agree to follow these policies and understand that joining the course means I accept these terms.', noteEmphasis: true },
+      { type: 'section', label: 'Declaration', note: 'I have read and understood the Course Terms and Conditions of Crispr Learning. I agree to follow these policies and understand that joining the course means I accept these terms.', noteEmphasis: true },
 
       { type: 'section', label: 'Student Details' },
       { key: 'studentName', label: 'Student Name', type: 'text', required: true },
