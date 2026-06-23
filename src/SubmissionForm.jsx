@@ -301,6 +301,7 @@ export default function SubmissionForm({
 
     const docTitle = escapeHtml(template.title || 'Form Response');
     const html = `<!doctype html><html><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${docTitle}</title>
 <style>
   * { box-sizing: border-box; }
@@ -319,18 +320,50 @@ export default function SubmissionForm({
   img.sig { max-width: 100%; max-height: 120px; }
   p.submitted { margin: 18px 0 0; font-size: 12px; color: #334155; }
 </style></head>
-<body onload="window.focus(); window.print();">
+<body>
   <div class="logo">${logoSvg}</div>
   <h1>${docTitle}</h1>${tablesHtml}
   ${submittedLine}
-  <script>window.onafterprint = function () { window.close(); };<\/script>
+  <script>
+    // Wait until the document and all images (logo, signature) have finished
+    // loading before invoking print — Android's "Save as PDF" service errors
+    // out if asked to render content that is still settling.
+    (function () {
+      var printed = false;
+      function doPrint() {
+        if (printed) return;
+        printed = true;
+        window.focus();
+        window.print();
+      }
+      window.onafterprint = function () { window.close(); };
+      window.addEventListener('load', function () {
+        var imgs = Array.prototype.slice.call(document.images);
+        var pending = imgs.filter(function (i) { return !i.complete; });
+        if (!pending.length) { setTimeout(doPrint, 200); return; }
+        var done = 0;
+        var finish = function () { if (++done >= pending.length) setTimeout(doPrint, 200); };
+        pending.forEach(function (i) {
+          i.addEventListener('load', finish);
+          i.addEventListener('error', finish);
+        });
+        // Fallback so we never hang waiting on a stuck image.
+        setTimeout(doPrint, 3000);
+      });
+    })();
+  <\/script>
 </body></html>`;
 
-    const win = window.open('', '_blank');
-    if (!win) { window.print(); return; } // popup blocked — fall back
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
+    // Serve the document from a real Blob URL rather than writing into an
+    // about:blank window. Mobile Chrome's print/"Save as PDF" pipeline fails to
+    // render document.write'd about:blank pages ("There was a problem printing
+    // the page"); a blob: URL is a proper navigable document it can print.
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (!win) { URL.revokeObjectURL(url); window.print(); return; } // popup blocked — fall back
+    // Revoke once the new window has had time to load the document.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   const renderedFields = useMemo(() => {
