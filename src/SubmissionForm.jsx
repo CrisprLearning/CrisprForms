@@ -69,17 +69,49 @@ function signatureSrc(v) {
   return s.startsWith('data:') ? s : `data:image/png;base64,${s}`;
 }
 
+// Load a raster image (data URL) and resolve its natural dimensions, so the PDF
+// can preserve the signature's aspect ratio. Resolves null if it fails to load.
+function loadImageDims(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ dataUrl, w: img.naturalWidth || 300, h: img.naturalHeight || 120 });
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+// Rasterize an inline SVG (the logo) to a PNG data URL for embedding in the PDF.
+// Resolves null on any failure so the PDF can render without the logo.
+function rasterizeSvg(svgRaw, targetWidthPx = 240) {
+  return new Promise((resolve) => {
+    try {
+      const blob = new Blob([svgRaw], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const ratio = img.height && img.width ? img.height / img.width : 0.3;
+        const w = targetWidthPx;
+        const h = Math.max(1, Math.round(targetWidthPx * ratio));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        resolve({ dataUrl: canvas.toDataURL('image/png'), w, h });
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 // Reduce note markdown (**bold**, [text](url)) to plain text for the PDF.
 function richToText(s) {
   return String(s)
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
 }
 
 // "09:00 am, 23 June, 2026" — used for the PDF's submitted-at footer.
@@ -116,6 +148,7 @@ export default function SubmissionForm({
   const [values, setValues] = useState(() => initialValues(fields, initialData));
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [focused, setFocused] = useState(null);
   // Final-preview step: after a valid submit, the form is shown read-only with
@@ -245,125 +278,154 @@ export default function SubmissionForm({
     }
   }
 
-  // Render the recorded answers as a standalone "<label> : <value>" PDF in a
-  // new window, then trigger the print dialog (Save as PDF). Each form section
-  // becomes its own heading + 40:60 two-column table; scoreTable columns and
-  // the signature image each become their own row.
-  function handlePrint() {
-    const blocks = [];
-    let current = { title: null, notes: [], rows: [] };
-    const addRow = (label, valueHtml) => current.rows.push(
-      `<tr><th>${escapeHtml(label)}</th><td>${valueHtml}</td></tr>`
-    );
+  // Build the recorded answers into a PDF and download it directly. We generate
+  // the file client-side with jsPDF instead of relying on the browser print
+  // dialog — mobile Chrome's "Save as PDF" pipeline is unreliable, so a direct
+  // download works consistently across desktop and mobile. Each form section
+  // becomes a heading + 40:60 two-column table; scoreTable columns and the
+  // signature image each become their own row.
+  async function handlePrint() {
+    if (printing) return;
+    setPrinting(true);
+    try {
+      // Lazy-load the PDF library so it (and its sizeable deps) only download
+      // when the user actually requests a PDF, keeping initial load fast.
+      const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+      ]);
+      // Collect the answers into section "blocks". Each row is either a text
+      // value or a signature image (kept as a data URL for later embedding).
+      const blocks = [];
+      let current = { title: null, notes: [], rows: [] };
+      const addRow = (label, value) => current.rows.push({ label, value });
+      const addSig = (label, dataUrl) => current.rows.push({ label, sig: dataUrl });
 
-    fields.forEach((f) => {
-      if (f.type === 'section') {
-        // Start a new block for this section; keep the previous one if it has
-        // any content (rows or a note — e.g. a note-only Declaration section).
-        if (current.rows.length || current.notes.length) blocks.push(current);
-        // Carry the emphasis note (if any) to print just below the heading.
-        const notes = f.noteEmphasis && f.note != null
-          ? (Array.isArray(f.note) ? f.note : [f.note])
-          : [];
-        current = { title: f.label, notes, rows: [] };
-        return;
-      }
-      if (f.type === 'scoreTable') {
-        (f.columns || []).forEach((c) => {
-          const v = String(values[c.key] ?? '').trim();
-          addRow(c.label, v ? escapeHtml(v) : '—');
-        });
-        return;
-      }
-      const v = values[f.key];
-      if (f.type === 'signature') {
-        addRow(f.label, v ? `<img class="sig" src="${escapeHtml(signatureSrc(v))}" alt="Signature" />` : '—');
-      } else if (f.type === 'checkbox') {
-        addRow(f.label, v ? 'Yes' : 'No');
-      } else {
-        const s = String(v ?? '').trim();
-        addRow(f.label, s ? escapeHtml(s) : '—');
-      }
-    });
-    if (current.rows.length || current.notes.length) blocks.push(current);
-
-    const tablesHtml = blocks.map((b) => `
-  ${b.title ? `<h2>${escapeHtml(b.title)}</h2>` : ''}
-  ${(b.notes || []).map((n) => `<p class="note">${escapeHtml(richToText(n))}</p>`).join('')}
-  ${b.rows.length ? `<table>
-    <colgroup><col class="label" /><col class="value" /></colgroup>
-    <tbody>${b.rows.join('')}</tbody>
-  </table>` : ''}`).join('');
-
-    const submittedLine = submittedAt
-      ? `<p class="submitted">Digitally submitted at <strong>${escapeHtml(formatSubmittedAt(submittedAt))}</strong></p>`
-      : '';
-
-    const docTitle = escapeHtml(template.title || 'Form Response');
-    const html = `<!doctype html><html><head><meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${docTitle}</title>
-<style>
-  * { box-sizing: border-box; }
-  body { margin: 24px; font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #1e293b; }
-  .logo { text-align: right; margin: 0 0 8px; }
-  .logo svg { width: 120px; max-width: 120px; height: auto; }
-  h1 { font-size: 18px; margin: 0 0 16px; }
-  h2 { font-size: 14px; margin: 22px 0 8px; }
-  p.note { font-size: 12px; color: #475569; margin: 0 0 8px; font-style: italic; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; page-break-inside: auto; }
-  tr { page-break-inside: avoid; }
-  col.label { width: 40%; }
-  col.value { width: 60%; }
-  th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; vertical-align: top; word-wrap: break-word; font-size: 12px; }
-  th { background: #f1f5f9; font-weight: 600; }
-  img.sig { max-width: 100%; max-height: 120px; }
-  p.submitted { margin: 18px 0 0; font-size: 12px; color: #334155; }
-</style></head>
-<body>
-  <div class="logo">${logoSvg}</div>
-  <h1>${docTitle}</h1>${tablesHtml}
-  ${submittedLine}
-  <script>
-    // Wait until the document and all images (logo, signature) have finished
-    // loading before invoking print — Android's "Save as PDF" service errors
-    // out if asked to render content that is still settling.
-    (function () {
-      var printed = false;
-      function doPrint() {
-        if (printed) return;
-        printed = true;
-        window.focus();
-        window.print();
-      }
-      window.onafterprint = function () { window.close(); };
-      window.addEventListener('load', function () {
-        var imgs = Array.prototype.slice.call(document.images);
-        var pending = imgs.filter(function (i) { return !i.complete; });
-        if (!pending.length) { setTimeout(doPrint, 200); return; }
-        var done = 0;
-        var finish = function () { if (++done >= pending.length) setTimeout(doPrint, 200); };
-        pending.forEach(function (i) {
-          i.addEventListener('load', finish);
-          i.addEventListener('error', finish);
-        });
-        // Fallback so we never hang waiting on a stuck image.
-        setTimeout(doPrint, 3000);
+      fields.forEach((f) => {
+        if (f.type === 'section') {
+          if (current.rows.length || current.notes.length) blocks.push(current);
+          const notes = f.noteEmphasis && f.note != null
+            ? (Array.isArray(f.note) ? f.note : [f.note]).map(richToText)
+            : [];
+          current = { title: f.label, notes, rows: [] };
+          return;
+        }
+        if (f.type === 'scoreTable') {
+          (f.columns || []).forEach((c) => {
+            const v = String(values[c.key] ?? '').trim();
+            addRow(c.label, v || '—');
+          });
+          return;
+        }
+        const v = values[f.key];
+        if (f.type === 'signature') {
+          if (v) addSig(f.label, signatureSrc(v));
+          else addRow(f.label, '—');
+        } else if (f.type === 'checkbox') {
+          addRow(f.label, v ? 'Yes' : 'No');
+        } else {
+          const s = String(v ?? '').trim();
+          addRow(f.label, s || '—');
+        }
       });
-    })();
-  <\/script>
-</body></html>`;
+      if (current.rows.length || current.notes.length) blocks.push(current);
 
-    // Serve the document from a real Blob URL rather than writing into an
-    // about:blank window. Mobile Chrome's print/"Save as PDF" pipeline fails to
-    // render document.write'd about:blank pages ("There was a problem printing
-    // the page"); a blob: URL is a proper navigable document it can print.
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank');
-    if (!win) { URL.revokeObjectURL(url); window.print(); return; } // popup blocked — fall back
-    // Revoke once the new window has had time to load the document.
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+      // Preload the logo (SVG → PNG) and every signature image so we have their
+      // dimensions and decoded pixels before drawing. Failures resolve to null
+      // and are simply skipped.
+      const logo = await rasterizeSvg(logoSvg, 240);
+      const sigRows = blocks.flatMap((b) => b.rows.filter((r) => r.sig));
+      const sigDims = await Promise.all(sigRows.map((r) => loadImageDims(r.sig)));
+      const sigDimMap = new Map();
+      sigRows.forEach((r, i) => { if (sigDims[i]) sigDimMap.set(r.sig, sigDims[i]); });
+
+      const docTitle = template.title || 'Form Response';
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      const contentW = pageW - margin * 2;
+      const labelW = contentW * 0.4;
+      const valueW = contentW - labelW;
+      let cursorY = margin;
+
+      // Logo, top-right.
+      if (logo) {
+        const logoW = 32; // mm
+        const logoH = logoW * (logo.h / logo.w);
+        doc.addImage(logo.dataUrl, 'PNG', pageW - margin - logoW, cursorY, logoW, logoH);
+        cursorY += logoH + 2;
+      }
+
+      // Title.
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(30, 41, 59);
+      doc.text(docTitle, margin, cursorY + 4);
+      cursorY += 10;
+
+      blocks.forEach((b) => {
+        if (b.title) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.setTextColor(30, 41, 59);
+          const lines = doc.splitTextToSize(b.title, contentW);
+          doc.text(lines, margin, cursorY + 4);
+          cursorY += lines.length * 5 + 2;
+        }
+        (b.notes || []).forEach((n) => {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(9);
+          doc.setTextColor(71, 85, 105);
+          const lines = doc.splitTextToSize(n, contentW);
+          doc.text(lines, margin, cursorY + 3.5);
+          cursorY += lines.length * 4.5 + 1;
+        });
+
+        if (!b.rows.length) return;
+
+        autoTable(doc, {
+          startY: cursorY + 1,
+          margin: { left: margin, right: margin },
+          tableWidth: contentW,
+          styles: { fontSize: 9, cellPadding: 2, lineColor: [203, 213, 225], lineWidth: 0.2, textColor: [30, 41, 59], valign: 'top', overflow: 'linebreak' },
+          columnStyles: {
+            0: { cellWidth: labelW, fontStyle: 'bold', fillColor: [241, 245, 249] },
+            1: { cellWidth: valueW },
+          },
+          body: b.rows.map((r) => {
+            if (r.sig) {
+              const dim = sigDimMap.get(r.sig);
+              // Reserve cell height for the signature (drawn in didDrawCell).
+              const drawW = Math.min(valueW - 4, dim ? (dim.w / dim.h) * 28 : 60);
+              const drawH = dim ? drawW * (dim.h / dim.w) : 24;
+              return [r.label, { content: '', _sig: r.sig, _w: drawW, _h: drawH, styles: { minCellHeight: drawH + 4 } }];
+            }
+            return [r.label, r.value];
+          }),
+          didDrawCell: (data) => {
+            const raw = data.cell.raw;
+            if (raw && raw._sig) {
+              try {
+                doc.addImage(raw._sig, 'PNG', data.cell.x + 2, data.cell.y + 2, raw._w, raw._h);
+              } catch { /* skip an image that fails to embed */ }
+            }
+          },
+        });
+        cursorY = doc.lastAutoTable.finalY + 4;
+      });
+
+      if (submittedAt) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(51, 65, 85);
+        doc.text(`Digitally submitted at ${formatSubmittedAt(submittedAt)}`, margin, cursorY + 4);
+      }
+
+      const fileName = `${docTitle}`.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'form-response';
+      doc.save(`${fileName}.pdf`);
+    } finally {
+      setPrinting(false);
+    }
   }
 
   const renderedFields = useMemo(() => {
@@ -551,8 +613,8 @@ export default function SubmissionForm({
           <div className="forms-state-icon">✓</div>
           <h1>Form Submitted</h1>
           <p>Your response has been recorded successfully. Thank you!</p>
-          <button type="button" className="forms-submit forms-print forms-confirm-download" onClick={handlePrint}>
-            Download PDF for Reference
+          <button type="button" className="forms-submit forms-print forms-confirm-download" onClick={handlePrint} disabled={printing}>
+            {printing ? 'Generating PDF…' : 'Download PDF for Reference'}
           </button>
         </div>
       </div>
@@ -622,8 +684,8 @@ export default function SubmissionForm({
 
         <div className={`forms-foot ${reviewing ? 'is-sticky' : ''}`}>
           {isRead ? (
-            <button type="button" className="forms-submit forms-print" onClick={handlePrint}>
-              Save PDF
+            <button type="button" className="forms-submit forms-print" onClick={handlePrint} disabled={printing}>
+              {printing ? 'Generating PDF…' : 'Save PDF'}
             </button>
           ) : reviewing ? (
             <div className="forms-review-actions">

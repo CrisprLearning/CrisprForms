@@ -10,6 +10,8 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
