@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getTemplate } from './formTemplates.js';
 import { fetchSubmission, fetchFormResponses } from './lib/api.js';
 import SubmissionForm from './SubmissionForm.jsx';
+import AdminView from './AdminView.jsx';
 
 // Read the route + params from the URL.
 //   /submission?id=<FORM_ID>&key=<RECIPIENT_KEY>  → live, submittable form
@@ -27,7 +28,10 @@ function tokenParam(search, name) {
 function parseParams() {
   const search = window.location.search;
   const path = window.location.pathname.replace(/\/+$/, '');
-  const route = path.endsWith('/preview') ? 'preview' : path.endsWith('/read') ? 'read' : 'submission';
+  const route = path.endsWith('/admin-view') ? 'admin-view'
+    : path.endsWith('/preview') ? 'preview'
+    : path.endsWith('/read') ? 'read'
+    : 'submission';
   return {
     id: rawParam(search, 'id'),
     key: tokenParam(search, 'key'),
@@ -109,6 +113,12 @@ export default function App() {
       });
     return () => { alive = false; };
   }, [id, key, secret, template, preview, isRead]);
+
+  // Admin view: `id` is a mobile number, not a form template. Render the
+  // submission-status dashboard before the template-based guards below.
+  if (route === 'admin-view') {
+    return <AdminView initialId={id} />;
+  }
 
   if (!id) {
     return (

@@ -482,3 +482,70 @@ body {
   .forms-input:disabled, .forms-read-signature { background: #fff; }
   .forms-foot, .forms-progress-ring { display: none; }
 }
+
+/* ── Admin view (/admin-view) ────────────────────────────────────────── */
+.admin-card { padding: 24px; }
+.admin-header { margin-bottom: 18px; }
+.admin-header h1 { margin: 0 0 6px; font-size: 20px; color: #0f172a; }
+.admin-header p { margin: 0; font-size: 13px; color: #64748b; line-height: 1.55; }
+
+.admin-search { display: flex; gap: 10px; margin-bottom: 18px; }
+.admin-search-input { flex: 1; }
+.admin-search-btn { width: auto; padding: 0 22px; white-space: nowrap; }
+
+.admin-hint, .admin-results-for { font-size: 13px; color: #64748b; margin: 4px 0 14px; }
+.admin-results-for strong { color: #0f172a; }
+.admin-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 11px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+.admin-form-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.admin-form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.admin-form-meta { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.admin-form-title { font-size: 14px; font-weight: 600; color: #0f172a; }
+.admin-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.admin-badge.is-submitted { background: #dcfce7; color: #15803d; }
+.admin-badge.is-pending { background: #f1f5f9; color: #64748b; }
+
+.admin-pdf-btn {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--crispr) 0%, var(--crispr-dark) 100%);
+  color: #fff;
+  border: none;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-pdf-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+@media (max-width: 480px) {
+  .admin-card { padding: 18px 16px; }
+  .admin-search { flex-direction: column; }
+  .admin-search-btn { width: 100%; padding: 12px; }
+}

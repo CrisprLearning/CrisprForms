@@ -112,6 +112,35 @@ export async function fetchFormResponses(formId, key) {
   return body;
 }
 
+// --- Admin view -----------------------------------------------------------
+// The admin view is opened as /admin-view?id=<mobile> and looks up the
+// submission status of every form for that mobile number, then lets a reviewer
+// open any submitted form as a PDF. Both calls hit admin-fetch.php via GET.
+
+const ADMIN_FETCH = `${PUBLIC_FORMS_BASE}/admin-fetch.php`;
+
+// Fetch the submission status of all forms for a mobile number.
+//   admin-fetch.php?id=<mobile>
+// Returns the raw response body; the caller maps it onto the known form ids.
+export async function fetchAdminFormStatuses(mobile) {
+  const res = await fetch(`${ADMIN_FETCH}?id=${encodeURIComponent(mobile)}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+// Fetch one form's recorded answers for a mobile number, for the PDF.
+//   admin-fetch.php?mobile=<mobile>&id=<FORM_ID>
+export async function fetchAdminFormData(mobile, formId) {
+  const res = await fetch(
+    `${ADMIN_FETCH}?mobile=${encodeURIComponent(mobile)}&id=${encodeURIComponent(formId)}`,
+    { headers: { Accept: 'application/json' } },
+  );
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
 // Submit the completed form. `data` is keyed by the template field keys.
 export async function submitForm(formId, key, data) {
   if (USE_MOCK) {
