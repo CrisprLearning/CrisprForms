@@ -14,7 +14,7 @@ const ADMIN_FORM_IDS = [
   'RESIDENCE_TERMS_AND_CONDITIONS',
 ];
 
-const SUBMITTED_WORDS = new Set(['submitted', 'completed', 'complete', 'done', 'yes', 'true', '1']);
+const SUBMITTED_WORDS = new Set(['submitted', 'filled', 'completed', 'complete', 'done', 'yes', 'true', '1']);
 
 // Map the admin-fetch status response onto { FORM_ID: entry } regardless of the
 // envelope shape the backend returns (array of forms, object keyed by form id,
@@ -50,6 +50,8 @@ function isSubmitted(entry) {
   if (entry === true) return true;
   if (typeof entry === 'string') return SUBMITTED_WORDS.has(entry.trim().toLowerCase());
   if (typeof entry === 'object') {
+    if (entry.filled === true || entry.filled === 1) return true;
+    if (entry.filled === false || entry.filled === 0) return false;
     const s = String(entry.status ?? entry.state ?? '').trim().toLowerCase();
     if (SUBMITTED_WORDS.has(s)) return true;
     if (entry.submitted === true || entry.submitted === 1) return true;
@@ -130,12 +132,18 @@ export default function AdminView({ initialId = '' }) {
     setPdfBusy(formId);
     setPdfError(null);
     try {
-      const resp = await fetchAdminFormData(mobile, formId);
-      const data = extractData(resp);
+      // The status response already embeds each form's answers, so use those
+      // directly; only hit the per-form endpoint if they're somehow missing.
+      let data = extractData(entry);
+      let submittedAt = submittedAtMs(entry);
+      if (!data || !Object.keys(data).length) {
+        const resp = await fetchAdminFormData(mobile, formId);
+        data = extractData(resp);
+        submittedAt = submittedAtMs(resp?.data ?? resp) ?? submittedAt;
+      }
       if (!data || !Object.keys(data).length) {
         throw new Error('No submission data found for this form.');
       }
-      const submittedAt = submittedAtMs(resp?.data ?? resp) ?? submittedAtMs(entry);
       await generateFormPdf({ template, values: data, submittedAt });
     } catch (err) {
       setPdfError({ formId, message: err?.message || 'Could not generate the PDF.' });

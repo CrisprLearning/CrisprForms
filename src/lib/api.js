@@ -120,10 +120,11 @@ export async function fetchFormResponses(formId, key) {
 const ADMIN_FETCH = `${PUBLIC_FORMS_BASE}/admin-fetch.php`;
 
 // Fetch the submission status of all forms for a mobile number.
-//   admin-fetch.php?id=<mobile>
-// Returns the raw response body; the caller maps it onto the known form ids.
+//   admin-fetch.php?mobile=<mobile>
+// The response embeds each form's recorded `data`, so the caller can render a
+// PDF straight from this without a second request.
 export async function fetchAdminFormStatuses(mobile) {
-  const res = await fetch(`${ADMIN_FETCH}?id=${encodeURIComponent(mobile)}`, {
+  const res = await fetch(`${ADMIN_FETCH}?mobile=${encodeURIComponent(mobile)}`, {
     headers: { Accept: 'application/json' },
   });
   if (!res.ok) throw await parseError(res);
